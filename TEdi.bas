@@ -185,7 +185,7 @@ Do
                         If Cursors(CursorID).Y + 2 > VerticalScrollOffset + VerticalLines Then VerticalScrollOffset = VerticalScrollOffset + 1
                         Cursors(CursorID).X = 1
                         HorizontalScrollOffset = 1
-                        If Cursors(CursorID).Y > 1 Then
+                        If Cursors(CursorID).Y > 1 And Lines$(Cursors(CursorID).Y) = "" Then
                             T$ = ""
                             For I = 1 To Len(Lines$(Cursors(CursorID).Y - 1))
                                 Select Case Asc(Lines$(Cursors(CursorID).Y - 1), I)
