@@ -55,9 +55,36 @@ Function ListLongSearch~& (LIST$, ITEM&)
     Next I
     ListLongSearch~& = 0
 End Function
+Function ListLongSearchBetween~& (LIST$, ITEM&)
+    If Len(LIST$) < 5 Then Exit Function
+    If Asc(LIST$) <> 3 Then Exit Function
+    For I = 1 To CVL(Mid$(LIST$, 2, 4))
+        If OLDITEM& >= ITEM& And ITEM& <= CVL(Mid$(LIST$, 6 + I * 4, 4)) Then ListLongSearchBetween~& = I: Exit Function
+        OLDITEM& = CVL(Mid$(LIST$, 6 + I * 4, 4))
+    Next I
+    ListLongSearchBetween~& = 0
+End Function
 Sub ListLongEdit (LIST$, ITEM&, POSITION As _Unsigned Long)
     If Len(LIST$) < 5 Then Exit Sub
     If Asc(LIST$) <> 3 Then Exit Sub
     If CVL(Mid$(LIST$, 2, 4)) < POSITION - 1 Then Exit Sub
     LIST$ = Left$(LIST$, 5 + POSITION * 4) + MKL$(ITEM&) + Mid$(LIST$, 6 + POSITION * 4)
+End Sub
+Sub ListLongIncrementAfterPosition (LIST$, POSITION As _Unsigned Long)
+    If Len(LIST$) < 5 Then Exit Sub
+    If Asc(LIST$) <> 3 Then Exit Sub
+    If CVL(Mid$(LIST$, 2, 4)) < POSITION - 1 Then Exit Sub
+    If Len(LIST$) < 6 + 4 * POSITION Then Exit Sub
+    For I = POSITION To CVL(Mid$(LIST$, 2, 4))
+        Mid$(LIST$, 6 + 4 * I, 4) = MKL$(CVL(Mid$(LIST$, 6 + 4 * I, 4)) + 1)
+    Next I
+End Sub
+Sub ListLongDecrementAfterPosition (LIST$, POSITION As _Unsigned Long)
+    If Len(LIST$) < 5 Then Exit Sub
+    If Asc(LIST$) <> 3 Then Exit Sub
+    If CVL(Mid$(LIST$, 2, 4)) < POSITION - 1 Then Exit Sub
+    If Len(LIST$) < 6 + 4 * POSITION Then Exit Sub
+    For I = POSITION To CVL(Mid$(LIST$, 2, 4))
+        Mid$(LIST$, 6 + 4 * I, 4) = MKL$(CVL(Mid$(LIST$, 6 + 4 * I, 4)) - 1)
+    Next I
 End Sub
