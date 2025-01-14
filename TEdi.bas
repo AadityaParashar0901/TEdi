@@ -1,121 +1,279 @@
 '$Dynamic
 $Resize:On
 Type Vec2
-    As _Unsigned Long X, Y
+    As Long X, Y
 End Type
 Screen _NewImage(960, 540, 32)
 Const FONTWIDTH = 8, FONTHEIGHT = 16
 Const TABSIZE = 8
 
-Dim Shared As Long VerticalScrollOffset(0), HorizontalScrollOffset(0)
-Dim Shared As Vec2 TextDrawOffset: SetVec2 TextDrawOffset, 5, 1
-Dim Shared As _Unsigned Long TOTALFILESOPENED, FILE_LINES(0)
-Dim Shared As String FILE_NAME(0), FILE_CONTENT(0), FILE_COLOR_START(0), FILE_LINES_START(0), FILE_LINES_END(0), FILE_COLOURS(0)
-For I = 1 To _CommandCount
-    INFILE$ = Command$(I)
-    If _FileExists(INFILE$) = 0 Then INFILE$ = _StartDir$ + "/" + INFILE$
-    If _FileExists(INFILE$) = 0 Then _Continue
-    ReadFile INFILE$
-Next I
-If TOTALFILESOPENED = 0 Then System
-currentFile = 1
-_Title FILE_NAME(currentFile)
+Dim Shared As Long VerticalScrollOffset, HorizontalScrollOffset
+Dim Shared As _Unsigned Long VerticalCharsVisible, HorizontalCharsVisible
+Dim Shared As Vec2 TextDrawOffset: SetVec2 TextDrawOffset, 5, 2
+
+Dim Shared As String Lines(0), Colour(0)
+Dim Shared As Vec2 Cursor, DisplayCursor: SetVec2 Cursor, 1, 1
+Dim Shared As _Unsigned Long CursorColour
+If _FileExists(Command$(1)) = 0 Then InFile$ = _StartDir$ + "/" + Command$(1) Else InFile$ = Command$(1)
+If _FileExists(InFile$) = 0 Then System
+ReadFile InFile$
+
 Do
-    Cls , 0
-    _Limit 60
+    Cls , 0: _Limit 60
     If _Resize Then
         W = _ResizeWidth: H = _ResizeHeight
         If Sgn(W) And Sgn(H) Then Screen _NewImage(W, H, 32)
     End If
-    VerticalCharsVisible = _Height \ FONTHEIGHT - TextDrawOffset.Y - 1: HorizontalCharsVisible = _Width \ FONTWIDTH - TextDrawOffset.X
+    VerticalCharsVisible = _Height \ FONTHEIGHT - TextDrawOffset.Y - 1: HorizontalCharsVisible = _Width \ FONTWIDTH - TextDrawOffset.X - 5
 
     'Mouse
-    While _MouseInput: VerticalScrollOffset(currentFile) = VerticalScrollOffset(currentFile) + _MouseWheel: Wend
-    VerticalScrollOffset(currentFile) = Max(1, Min(FILE_LINES(currentFile) - _SHR(VerticalCharsVisible, 1), VerticalScrollOffset(currentFile)))
+    While _MouseInput
+        VerticalScrollOffset = VerticalScrollOffset + _MouseWheel
+    Wend
+    VerticalScrollOffset = Max(1, Min(VerticalScrollOffset, UBound(Lines) - _SHR(VerticalCharsVisible, 1)))
 
     'Keyboard
-    If (_KeyDown(67) Or _KeyDown(99)) Then currentFile = (currentFile Mod TOTALFILESOPENED) + 1: _Title FILE_NAME(currentFile): While _KeyDown(67) Or _KeyDown(99): Wend
     Key$ = InKey$
-    Select Case Len(Key$)
-        Case 2: Select Case Asc(Key$, 2)
-                Case 72: VerticalScrollOffset(currentFile) = Max(VerticalScrollOffset(currentFile) - 1, 1)
-                Case 80: VerticalScrollOffset(currentFile) = Min(VerticalScrollOffset(currentFile) + 1, FILE_LINES(currentFile))
-                Case 75: HorizontalScrollOffset(currentFile) = Max(HorizontalScrollOffset(currentFile) - 1, 1)
-                Case 77: HorizontalScrollOffset(currentFile) = HorizontalScrollOffset(currentFile) + 1
+    KeyShift = _KeyDown(100303) Or _KeyDown(100304)
+    KeyCtrl = _KeyDown(100305) Or _KeyDown(100306)
+    KeyAlt = _KeyDown(100307) Or _KeyDown(100308)
+
+    If Len(Key$) = 1 Then
+        If KeyCtrl Then
+            Select Case Asc(Key$)
+                Case 11: 'Ctrl + K
+                    HorizontalScrollOffset = Max(0, HorizontalScrollOffset - 1)
+                Case 12: 'Ctrl + L
+                    HorizontalScrollOffset = HorizontalScrollOffset + 1
             End Select
-    End Select
+        Else
+            Select Case Asc(Key$)
+                Case 8: If Cursor.X > 1 Then
+                        DeleteText 1
+                    Else
+                        If Cursor.Y > 1 Then
+                            Cursor.Y = Cursor.Y - 1
+                            Cursor.X = Len(Lines(Cursor.Y)) + 1
+                            Lines(Cursor.Y) = Lines(Cursor.Y) + Lines(Cursor.Y + 1)
+                            ReParseLine Cursor.Y
+                            For I~& = Cursor.Y + 1 To UBound(Lines) - 1
+                                Swap Lines(I~&), Lines(I~& + 1)
+                                Swap Colour(I~&), Colour(I~& + 1)
+                            Next I~&
+                            ReDim _Preserve As String Lines(1 To UBound(Lines) - 1), Colour(1 To UBound(Colour) + 1)
+                        End If
+                    End If
+                Case 13: ReDim _Preserve As String Lines(1 To UBound(Lines) + 1), Colour(1 To UBound(Colour) + 1)
+                    For I~& = UBound(Lines) - 1 To Cursor.Y + 1 Step -1
+                        Swap Lines(I~&), Lines(I~& + 1)
+                        Swap Colour(I~&), Colour(I~& + 1)
+                    Next I~&
+                    If Cursor.X < Len(Lines(Cursor.Y)) Then
+                        Lines(Cursor.Y + 1) = Mid$(Lines(Cursor.Y), Cursor.X)
+                        Lines(Cursor.Y) = Left$(Lines(Cursor.Y), Cursor.X - 1)
+                    End If
+                    ReParseLine Cursor.Y
+                    ReParseLine Cursor.Y + 1
+                    Cursor.Y = Cursor.Y + 1
+                    Cursor.X = 1
+                Case 32 To 126: InsertText Key$
+            End Select
+        End If
+    ElseIf Len(Key$) = 2 Then
+        Select Case Asc(Key$, 2)
+            Case 83: If Cursor.X <= Len(Lines(Cursor.Y)) Then
+                    DeleteText -1
+                Else
+                    If UBound(Lines) > Cursor.Y Then
+                        Lines(Cursor.Y) = Lines(Cursor.Y) + Lines(Cursor.Y + 1)
+                        For I~& = Cursor.Y + 1 To UBound(Lines) - 1
+                            Swap Lines(I~&), Lines(I~& + 1)
+                            Swap Colour(I~&), Colour(I~& + 1)
+                        Next I~&
+                        ReDim _Preserve As String Lines(1 To UBound(Lines) - 1), Colour(1 To UBound(Colour) - 1)
+                        ReParseLine Cursor.Y
+                    End If
+                End If
+            Case 72 'Up
+                Cursor.Y = Max(1, Cursor.Y - 1)
+                If inRange(VerticalScrollOffset, Cursor.Y, VerticalScrollOffset + VerticalCharsVisible) = 0 Then VerticalScrollOffset = Cursor.Y
+            Case 141: 'Ctrl + Up
+                VerticalScrollOffset = Max(1, VerticalScrollOffset - 1)
+            Case 80 'Down
+                Cursor.Y = Min(Cursor.Y + 1, UBound(Lines))
+                If inRange(VerticalScrollOffset, Cursor.Y, VerticalScrollOffset + VerticalCharsVisible) = 0 Then VerticalScrollOffset = Cursor.Y - VerticalCharsVisible
+            Case 145: 'Ctrl + Down
+                VerticalScrollOffset = VerticalScrollOffset + 1
+            Case 75 'Left
+                Cursor.X = Cursor.X - 1
+            Case 77 'Right
+                Cursor.X = Cursor.X + 1
+            Case 71 'Home
+                Cursor.X = 1
+            Case 79 'End
+                Cursor.X = Len(Lines(Cursor.Y)) + 1
+        End Select
+    End If
+    Cursor.X = Max(1, Min(Cursor.X, Len(Lines(Cursor.Y)) + 1))
 
     'Display
     Line ((TextDrawOffset.X + 0.5) * FONTWIDTH, TextDrawOffset.Y * FONTHEIGHT)-((TextDrawOffset.X + 0.5) * FONTWIDTH, (TextDrawOffset.Y + VerticalCharsVisible + 1) * FONTHEIGHT), -1 'Seperator
-    DI~& = TextDrawOffset.Y * FONTHEIGHT: For I~& = VerticalScrollOffset(currentFile) To Min(VerticalScrollOffset(currentFile) + VerticalCharsVisible, FILE_LINES(currentFile))
+    Line ((TextDrawOffset.X + HorizontalCharsVisible + 0.5) * FONTWIDTH, TextDrawOffset.Y * FONTHEIGHT)-((TextDrawOffset.X + HorizontalCharsVisible + 0.5) * FONTWIDTH, (TextDrawOffset.Y + VerticalCharsVisible + 1) * FONTHEIGHT), -1 'Seperator
+
+    'Cursor
+    SetVec2 DisplayCursor, FONTWIDTH * (Cursor.X + TextDrawOffset.X), FONTHEIGHT * (Cursor.Y + TextDrawOffset.Y - VerticalScrollOffset)
+
+    'Lines
+    DI~& = TextDrawOffset.Y * FONTHEIGHT
+    For I~& = VerticalScrollOffset To Min(VerticalScrollOffset + VerticalCharsVisible, UBound(Lines))
         'Line Number
-        Color -1, 0: LINENUMBER$ = LTrim$(Str$(I~&)): _PrintString ((TextDrawOffset.X - Len(LINENUMBER$)) * FONTWIDTH, DI~&), LINENUMBER$
+        Color -1, 0
+        LINENUMBER$ = LTrim$(Str$(I~&))
+        _PrintString ((TextDrawOffset.X - Len(LINENUMBER$)) * FONTWIDTH, DI~&), LINENUMBER$
 
         'Line Print
-        START~& = HorizontalScrollOffset(currentFile) + ListLongGet(FILE_LINES_START(currentFile), I~&)
-        COLOUROFFSET~& = ListLongGet(FILE_COLOR_START(currentFile), I~&)
-        K = TextDrawOffset.X * FONTWIDTH: For J~& = ListLongGet(FILE_LINES_START(currentFile), I~&) To ListLongGet(FILE_LINES_END(currentFile), I~&)
-            BYTE~%% = Asc(FILE_CONTENT(currentFile), J~&)
+        COLOUROFFSET~& = 0
+        K = (TextDrawOffset.X - HorizontalScrollOffset) * FONTWIDTH
+        For J~& = 1 To Len(Lines(I~&))
+            BYTE~%% = Asc(Lines(I~&), J~&)
             COLOUROFFSET~& = COLOUROFFSET~& - inRange(33, BYTE~%%, 126)
-            If J~& >= START~& Then
-                K = K + FONTWIDTH
-                Select Case BYTE~%%
-                    Case 9: K = TABSIZE * FONTWIDTH * ((K \ FONTWIDTH - TextDrawOffset.X) \ TABSIZE + 1) + (TextDrawOffset.X) * FONTWIDTH
-                    Case 33 To 126: Color ListLongGet(FILE_COLOURS(currentFile), COLOUROFFSET~&), 0: _PrintString (K, DI~&), Chr$(BYTE~%%)
-                    Case Else: Color _RGB32(255, 0, 0), 0: _PrintString (K, DI~&), Chr$(BYTE~%%)
-                End Select
-                If K > _Width Then Exit For
+            Select Case BYTE~%%
+                Case 9, 32: Color -1, 0
+                Case 33 To 126: Color ListLongGet(Colour(I~&), COLOUROFFSET~&), 0
+                Case Else: Color _RGB32(255, 0, 0), 0
+            End Select
+            If I~& = Cursor.Y And J~& = Cursor.X Then
+                DisplayCursor.X = K - (HorizontalScrollOffset - 1) * FONTWIDTH
+                CursorColour = _DefaultColor
             End If
+            If I~& = Cursor.Y And Cursor.X > Len(Lines(Cursor.Y)) Then
+                DisplayCursor.X = K - (HorizontalScrollOffset - 2) * FONTWIDTH
+                CursorColour = -1
+            End If
+            If BYTE~%% = 9 Then
+                OldK = K
+                K = (((K \ TABSIZE - TextDrawOffset.X + HorizontalScrollOffset) \ FONTWIDTH + 1) * TABSIZE + TextDrawOffset.X - HorizontalScrollOffset) * FONTWIDTH
+            Else
+                K = K + FONTWIDTH
+            End If
+            If K >= (TextDrawOffset.X + 1) * FONTWIDTH Then
+                Select Case BYTE~%%
+                    Case 33 To 126: _PrintString (K, DI~&), Chr$(BYTE~%%)
+                    Case 9, 32
+                    Case Else: _PrintString (K, DI~&), Chr$(BYTE~%%)
+                End Select
+            End If
+            If K > _Width Then Exit For
         Next J~&
-    DI~& = DI~& + FONTHEIGHT: Next I~&
+        DI~& = DI~& + FONTHEIGHT
+    Next I~&
+
+    'Draw Cursor
+    Color CursorColour, 0
+    If inRange((TextDrawOffset.X + 1) * FONTWIDTH, DisplayCursor.X, (TextDrawOffset.X + HorizontalCharsVisible) * FONTWIDTH) And inRange(VerticalScrollOffset, Cursor.Y, VerticalScrollOffset + VerticalCharsVisible) Then If Timer - Int(Timer) > 0.5 Then _PrintString (DisplayCursor.X, DisplayCursor.Y), Chr$(22)
 
     _Display
 Loop Until Inp(&H60) = 1
 System
-Sub ReadFile (FILE$)
-    __F& = FreeFile
-    iFile = UBound(FILE_NAME) + 1
-    ReDim _Preserve FILE_NAME(1 To iFile), FILE_CONTENT(1 To iFile), FILE_COLOURS(1 To iFile), FILE_COLOR_START(1 To iFile), FILE_LINES(1 To iFile): FILE_NAME(iFile) = FILENAME$(FILE$)
-    ReDim _Preserve FILE_LINES_START(1 To iFile), FILE_LINES_END(1 To iFile)
-    ReDim _Preserve VerticalScrollOffset(1 To iFile), HorizontalScrollOffset(1 To iFile)
-    Open FILE$ For Binary As #__F&
-    FILE_CONTENT(iFile) = String$(LOF(__F&), 0)
-    Get #__F&, , FILE_CONTENT(iFile)
-    Close #__F&
-    ParseFile iFile
-    TOTALFILESOPENED = TOTALFILESOPENED + 1
+
+Sub InsertText (K$)
+    If InStr(K$, Chr$(13)) Or InStr(K$, Chr$(10)) Then
+    Else
+        Lines(Cursor.Y) = Left$(Lines(Cursor.Y), Cursor.X - 1) + K$ + Mid$(Lines(Cursor.Y), Cursor.X)
+        Cursor.X = Cursor.X + Len(K$)
+        ReParseLine Cursor.Y
+    End If
 End Sub
-Sub ParseFile (iFile)
-    FILE_COLOR_START(iFile) = ListLongNew$
-    FILE_COLOURS(iFile) = ListLongNew$
-    FILE_LINES_START(iFile) = ListLongNew$
-    FILE_LINES_END(iFile) = ListLongNew$
-    FILE_LINES(iFile) = 1
-    ListLongAdd FILE_LINES_START(iFile), 1
-    ListLongAdd FILE_COLOR_START(iFile), 0
-    Dim I As _Unsigned Long
-    For I = 1 To Len(FILE_CONTENT(iFile))
-        If (I Mod 1000) = 0 Then Locate 1, 1: Print "Parsing File: "; I; "/"; Len(FILE_CONTENT(iFile))
-        BYTE~%% = Asc(FILE_CONTENT(iFile), I)
+Sub DeleteText (SIZE&)
+    If SIZE& > 0 Then
+        Lines(Cursor.Y) = Left$(Lines(Cursor.Y), Cursor.X - SIZE& - 1) + Mid$(Lines(Cursor.Y), Cursor.X)
+        Cursor.X = Cursor.X - 1
+    ElseIf SIZE& < 0 Then
+        Lines(Cursor.Y) = Left$(Lines(Cursor.Y), Cursor.X - 1) + Mid$(Lines(Cursor.Y), Cursor.X - SIZE&)
+    End If
+    ReParseLine Cursor.Y
+End Sub
+
+Sub ReadFile (FILE$)
+    Print "Reading File"
+    __F = FreeFile
+    Open FILE$ For Binary As #__F
+    __FC$ = String$(LOF(__F), 0)
+    Get #__F, , __FC$
+    Close #__F
+    CURRENTLINE~& = 1
+    __OldI~& = 1
+    ReDim Colour(1 To 1) As String
+    Colour(1) = ListLongNew$
+    Y = CsrLin
+    __L~& = Len(__FC$)
+    For __I~& = 1 To __L~&
+        BYTE~%% = Asc(__FC$, __I~&)
         Select Case BYTE~%%
-            Case 13: If Asc(FILE_CONTENT(iFile), I + 1) = 10 Then
-                    ListLongAdd FILE_LINES_END(iFile), I - 1
-                    ListLongAdd FILE_LINES_START(iFile), I + 2
-                    ListLongAdd FILE_COLOR_START(iFile), ListLongLength(FILE_COLOURS(iFile))
-                    FILE_LINES(iFile) = FILE_LINES(iFile) + 1
-                    I = I + 1
+            Case 13: If Asc(__FC$, __I~& + 1) = 10 Then
+                    ReDim _Preserve Lines(1 To CURRENTLINE~&) As String
+                    Lines(CURRENTLINE~&) = Mid$(__FC$, __OldI~&, __I~& - __OldI~&)
+                    CURRENTLINE~& = CURRENTLINE~& + 1
+                    ReDim _Preserve Colour(1 To CURRENTLINE~&) As String
+                    Colour(CURRENTLINE~&) = ListLongNew$
+                    __I~& = __I~& + 1
+                    __OldI~& = __I~& + 1
                 End If
-            Case 33, 35 To 45, 47, 58 To 64, 91 To 94, 96, 123 To 125: ListLongAdd FILE_COLOURS(iFile), _RGB32(0, 191, 0)
-            Case 34: STRINGMODE = 1 - STRINGMODE: ListLongAdd FILE_COLOURS(iFile), _RGB32(255, 127, 0)
-            Case 46: ListLongAdd FILE_COLOURS(iFile), -1
-            Case 48 To 57: ListLongAdd FILE_COLOURS(iFile), IIF(inRange(48, LB~%%, 57) Or inRange(65, LB~%%, 90) Or inRange(97, LB~%%, 122), ListLongGet(FILE_COLOURS(iFile), ListLongLength(FILE_COLOURS(iFile))), _RGB32(255, 127, 255))
-            Case 65 To 90, 97 To 122: ListLongAdd FILE_COLOURS(iFile), -1
-            Case 95: ListLongAdd FILE_COLOURS(iFile), -1
+            Case 10: ReDim _Preserve Lines(1 To CURRENTLINE~&) As String
+                Lines(CURRENTLINE~&) = Mid$(__FC$, __OldI~&, __I~& - __OldI~&)
+                CURRENTLINE~& = CURRENTLINE~& + 1
+                ReDim _Preserve Colour(1 To CURRENTLINE~&) As String
+                Colour(CURRENTLINE~&) = ListLongNew$
+                __OldI~& = __I~& + 1
         End Select
-        If STRINGMODE And BYTE~%% <> 34 Then Mid$(FILE_COLOURS(iFile), Len(FILE_COLOURS(iFile)) - 3, 4) = MKL$(_RGB32(255, 191, 0))
-        LB~%% = IIF(inRange(33, BYTE~%%, 126), BYTE~%%, LB~%%)
+        If Timer - ST! > 0.1 Then Locate Y, 1: Print "Reading Byte"; __I~&; "/"; __L~&: ST! = Timer
+    Next __I~&
+    ReDim _Preserve As String Lines(1 To CURRENTLINE~&)
+    Lines(CURRENTLINE~&) = Mid$(__FC$, __OldI~&)
+    ParseFile
+End Sub
+Sub ParseFile
+    Print "Parsing File"
+    Y = CsrLin
+    For __I~& = 1 To UBound(Lines)
+        If Timer - ST! > 0.1 Then Locate Y, 1: Print "Parsing Line"; __I~&; "/"; UBound(Lines): ST! = Timer
+        ReParseLine __I~&
+    Next __I~&
+End Sub
+Sub ReParseLine (__LINE~&)
+    Colour(__LINE~&) = ListLongNew$
+    For __I~& = 1 To Len(Lines(__LINE~&))
+        BYTE~%% = Asc(Lines(__LINE~&), __I~&)
+        Select Case BYTE~%%
+            Case 33, 35 To 45, 47, 58 To 64, 91 To 94, 96, 123 To 126: ListLongAdd Colour(__LINE~&), _RGB32(0, 191, 0)
+            Case 34: STRINGMODE = 1 - STRINGMODE: ListLongAdd Colour(__LINE~&), _RGB32(255, 127, 0)
+            Case 46: ListLongAdd Colour(__LINE~&), IIF(inRange(48, LB~%%, 57) Or inRange(65, LB~%%, 90) Or inRange(97, LB~%%, 122), ListLongGet(Colour(__LINE~&), ListLongLength(Colour(__LINE~&))), -1)
+            Case 48 To 57: ListLongAdd Colour(__LINE~&), IIF(inRange(48, LB~%%, 57) Or inRange(65, LB~%%, 90) Or inRange(97, LB~%%, 122), ListLongGet(Colour(__LINE~&), ListLongLength(Colour(__LINE~&))), _RGB32(255, 127, 255))
+            Case 65 To 90, 97 To 122: ListLongAdd Colour(__LINE~&), -1
+            Case 95: ListLongAdd Colour(__LINE~&), -1
+        End Select
+        LB~%% = BYTE~%%
+    Next __I~&
+End Sub
+
+Sub SaveFile (FILE$)
+    __FS~& = 0
+    Dim I As _Unsigned Long
+    __UL~& = UBound(Lines)
+    For I = 1 To __UL~&
+        __FS~& = __FS~& + Len(Lines(I))
     Next I
-    ListLongAdd FILE_LINES_END(iFile), Len(FILE_CONTENT(iFile))
+    __FC$ = String$(__FS~&, 0)
+    __FS~& = 1
+    For I = 1 To __UL~&
+        Mid$(__FC$, __FS~&, Len(Lines(I))) = Lines(I)
+        __FS~& = __FS~& + Len(Lines(I))
+    Next I
+    __F = FreeFile
+    Open FILE$ For Binary As #__F
+    Get #__F, , __FC$
+    Close #__F
+    __FC$ = ""
 End Sub
 Function FILENAME$ (I$)
     If InStr(I$, "\") Then FILENAME$ = Mid$(I$, _InStrRev(I$, "\") + 1) Else FILENAME$ = I$
