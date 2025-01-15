@@ -4,6 +4,7 @@ Type Vec2
     As Long X, Y
 End Type
 Type CHAR_TYPES
+    As _Unsigned Long Background, Selection, Seperator, CurrentLine
     As _Unsigned Long KeyWords, Numbers, Strings, Symbols, Normal
 End Type
 Screen _NewImage(960, 540, 32)
@@ -20,17 +21,33 @@ Dim Shared As Vec2 Cursor, DisplayCursor, OldCursor: SetVec2 Cursor, 1, 1
 Dim Shared As Vec2 SelectionStart, SelectionEnd
 Dim Shared As _Unsigned Long CursorColour
 Dim Shared As CHAR_TYPES THEME_COLOURS
-THEME_COLOURS.Normal = _RGB32(255, 255, 255)
-THEME_COLOURS.Symbols = _RGB32(0, 191, 0)
-THEME_COLOURS.Numbers = _RGB32(255, 127, 255)
-THEME_COLOURS.Strings = _RGB32(255, 191, 0)
-THEME_COLOURS.KeyWords = _RGB32(0, 127, 191)
+If WHITE_THEME Or 1 Then
+    THEME_COLOURS.Normal = _RGB32(0)
+    THEME_COLOURS.Symbols = _RGB32(0, 191, 0)
+    THEME_COLOURS.Numbers = _RGB32(0, 127, 0)
+    THEME_COLOURS.Strings = _RGB32(255, 63, 0)
+    THEME_COLOURS.KeyWords = _RGB32(0, 63, 127)
+    THEME_COLOURS.Background = _RGB32(255)
+    THEME_COLOURS.Selection = _RGB32(191)
+    THEME_COLOURS.CurrentLine = _RGB32(223)
+    THEME_COLOURS.Seperator = _RGB32(0)
+Else
+    THEME_COLOURS.Normal = _RGB32(255, 255, 255)
+    THEME_COLOURS.Symbols = _RGB32(0, 191, 0)
+    THEME_COLOURS.Numbers = _RGB32(255, 127, 255)
+    THEME_COLOURS.Strings = _RGB32(255, 191, 0)
+    THEME_COLOURS.KeyWords = _RGB32(0, 127, 191)
+    THEME_COLOURS.Background = _RGB32(0)
+    THEME_COLOURS.Selection = _RGB32(63)
+    THEME_COLOURS.CurrentLine = _RGB32(31)
+    THEME_COLOURS.Seperator = _RGB32(255)
+End If
 If _FileExists(Command$(1)) = 0 Then InFile$ = _StartDir$ + "/" + Command$(1) Else InFile$ = Command$(1)
 If _FileExists(InFile$) = 0 Then System
 ReadFile InFile$
 
 Do
-    Cls , 0: _Limit 60
+    Cls , THEME_COLOURS.Background: _Limit 60
     If _Resize Then
         W = _ResizeWidth: H = _ResizeHeight
         If Sgn(W) And Sgn(H) Then Screen _NewImage(W, H, 32)
@@ -179,9 +196,9 @@ Do
     End If
 
     'Display
-    Line ((TextDrawOffset.X + 0.5) * FONTWIDTH, TextDrawOffset.Y * FONTHEIGHT)-((TextDrawOffset.X + 0.5) * FONTWIDTH, (TextDrawOffset.Y + VerticalCharsVisible + 1) * FONTHEIGHT), -1 'Seperator
-    Line ((TextDrawOffset.X + HorizontalCharsVisible + 0.5) * FONTWIDTH, TextDrawOffset.Y * FONTHEIGHT)-((TextDrawOffset.X + HorizontalCharsVisible + 0.5) * FONTWIDTH, (TextDrawOffset.Y + VerticalCharsVisible + 1) * FONTHEIGHT), -1 'Seperator
-    Line ((TextDrawOffset.X + 1) * FONTWIDTH, (TextDrawOffset.Y + Cursor.Y - VerticalScrollOffset) * FONTHEIGHT)-((TextDrawOffset.X + HorizontalCharsVisible) * FONTWIDTH, (TextDrawOffset.Y + Cursor.Y + 1 - VerticalScrollOffset) * FONTHEIGHT), _RGB32(31), BF 'Line Highlighter
+    Line ((TextDrawOffset.X + 0.5) * FONTWIDTH, TextDrawOffset.Y * FONTHEIGHT)-((TextDrawOffset.X + 0.5) * FONTWIDTH, (TextDrawOffset.Y + VerticalCharsVisible + 1) * FONTHEIGHT), THEME_COLOURS.Seperator 'Seperator
+    Line ((TextDrawOffset.X + HorizontalCharsVisible + 0.5) * FONTWIDTH, TextDrawOffset.Y * FONTHEIGHT)-((TextDrawOffset.X + HorizontalCharsVisible + 0.5) * FONTWIDTH, (TextDrawOffset.Y + VerticalCharsVisible + 1) * FONTHEIGHT), THEME_COLOURS.Seperator 'Seperator
+    Line ((TextDrawOffset.X + 1) * FONTWIDTH, (TextDrawOffset.Y + Cursor.Y - VerticalScrollOffset) * FONTHEIGHT)-((TextDrawOffset.X + HorizontalCharsVisible) * FONTWIDTH, (TextDrawOffset.Y + Cursor.Y + 1 - VerticalScrollOffset) * FONTHEIGHT), THEME_COLOURS.CurrentLine, BF 'Line Highlighter
 
     'Cursor
     SetVec2 DisplayCursor, FONTWIDTH * (Cursor.X + TextDrawOffset.X - HorizontalScrollOffset), FONTHEIGHT * (Cursor.Y + TextDrawOffset.Y - VerticalScrollOffset + 0.125)
@@ -190,7 +207,7 @@ Do
     DI~& = TextDrawOffset.Y * FONTHEIGHT
     For I~& = VerticalScrollOffset To Min(VerticalScrollOffset + VerticalCharsVisible, UBound(Lines))
         'Line Number
-        Color -1, 0
+        Color THEME_COLOURS.Normal, 0
         LINENUMBER$ = LTrim$(Str$(I~&))
         _PrintString ((TextDrawOffset.X - Len(LINENUMBER$)) * FONTWIDTH, DI~&), LINENUMBER$
 
@@ -202,10 +219,10 @@ Do
             COLOUROFFSET~& = COLOUROFFSET~& - inRange(33, BYTE~%%, 126)
             Color , 0
             If Vec2Equal(SelectionStart, SelectionEnd) = 0 Then
-                If inRange(SelectionStart.Y + 1, I~&, SelectionEnd.Y - 1) Then Color , _RGB32(63)
-                If SelectionStart.Y = I~& And I~& < SelectionEnd.Y And SelectionStart.X <= J~& Then Color , _RGB32(63)
-                If SelectionStart.Y < I~& And I~& = SelectionEnd.Y And SelectionEnd.X >= J~& Then Color , _RGB32(63)
-                If SelectionStart.Y = SelectionEnd.Y And inRange(SelectionStart.X, J~&, SelectionEnd.X) Then Color , _RGB32(63)
+                If inRange(SelectionStart.Y + 1, I~&, SelectionEnd.Y - 1) Then Color , THEME_COLOURS.Selection
+                If SelectionStart.Y = I~& And I~& < SelectionEnd.Y And SelectionStart.X <= J~& Then Color , THEME_COLOURS.Selection
+                If SelectionStart.Y < I~& And I~& = SelectionEnd.Y And SelectionEnd.X >= J~& Then Color , THEME_COLOURS.Selection
+                If SelectionStart.Y = SelectionEnd.Y And inRange(SelectionStart.X, J~&, SelectionEnd.X) Then Color , THEME_COLOURS.Selection
                 If inRange(SelectionStart.Y, I~&, SelectionEnd.Y) = 0 Then Color , 0
             End If
             Select Case BYTE~%%
