@@ -4,13 +4,17 @@ Type Vec2
     As Long X, Y
 End Type
 Type CHAR_TYPES
-    As _Unsigned Long Background, Selection, Seperator, CurrentLine
+    As _Unsigned Long Background, Selection, Seperator, CurrentLine, Cursor
     As _Unsigned Long KeyWords, Numbers, Strings, Symbols, Normal
+    As _Unsigned Long UnIdentified
 End Type
 Screen _NewImage(960, 540, 32)
 Const FONTWIDTH = 8, FONTHEIGHT = 16
 Const TABSIZE = 8
 Dim Shared As String NEWLINE: NEWLINE = Chr$(13) + Chr$(10) 'CRLF
+
+Do Until _ScreenExists: Loop
+While _Resize: Wend
 
 Dim Shared As Long VerticalScrollOffset, HorizontalScrollOffset
 Dim Shared As _Unsigned Long VerticalCharsVisible, HorizontalCharsVisible
@@ -25,12 +29,14 @@ If WHITE_THEME Or 1 Then
     THEME_COLOURS.Normal = _RGB32(0)
     THEME_COLOURS.Symbols = _RGB32(0, 191, 0)
     THEME_COLOURS.Numbers = _RGB32(0, 127, 0)
-    THEME_COLOURS.Strings = _RGB32(255, 63, 0)
+    THEME_COLOURS.Strings = _RGB32(255, 127, 0)
     THEME_COLOURS.KeyWords = _RGB32(0, 63, 127)
     THEME_COLOURS.Background = _RGB32(255)
     THEME_COLOURS.Selection = _RGB32(191)
     THEME_COLOURS.CurrentLine = _RGB32(223)
     THEME_COLOURS.Seperator = _RGB32(0)
+    THEME_COLOURS.UnIdentified = _RGB32(255, 0, 0)
+    THEME_COLOURS.Cursor = _RGB32(0)
 Else
     THEME_COLOURS.Normal = _RGB32(255, 255, 255)
     THEME_COLOURS.Symbols = _RGB32(0, 191, 0)
@@ -41,11 +47,13 @@ Else
     THEME_COLOURS.Selection = _RGB32(63)
     THEME_COLOURS.CurrentLine = _RGB32(31)
     THEME_COLOURS.Seperator = _RGB32(255)
+    THEME_COLOURS.UnIdentified = _RGB32(255, 0, 0)
+    THEME_COLOURS.Cursor = _RGB32(255)
 End If
 If _FileExists(Command$(1)) = 0 Then InFile$ = _StartDir$ + "/" + Command$(1) Else InFile$ = Command$(1)
 If _FileExists(InFile$) = 0 Then System
 ReadFile InFile$
-
+_Title "TEdi - " + InFile$
 Do
     Cls , THEME_COLOURS.Background: _Limit 60
     If _Resize Then
@@ -87,9 +95,11 @@ Do
                     HorizontalScrollOffset = Max(0, HorizontalScrollOffset - 1)
                 Case 12: 'Ctrl + L
                     HorizontalScrollOffset = HorizontalScrollOffset + 1
-                Case 21: 'Ctrl + U
+                Case 19: 'Ctrl + S
+                    SaveFile InFile$
                 Case 22: 'Ctrl + V
                     InsertText _Clipboard$
+                Case 25: 'Ctrl + Y
                 Case 26: 'Ctrl + Z
             End Select
         Else
@@ -134,7 +144,7 @@ Do
                 VerticalScrollOffset = Max(1, VerticalScrollOffset - VerticalCharsVisible)
 
             Case 81: Cursor.Y = Min(UBound(Lines), Cursor.Y + VerticalCharsVisible)
-                VerticalScrollOffset = Min(UBound(lines) - _SHR(VerticalCharsVisible, 1), VerticalScrollOffset + VerticalCharsVisible)
+                VerticalScrollOffset = Min(UBound(Lines) - _SHR(VerticalCharsVisible, 1), VerticalScrollOffset + VerticalCharsVisible)
 
             Case 83: If Cursor.X <= Len(Lines(Cursor.Y)) Then
                     DeleteText -1
@@ -162,17 +172,36 @@ Do
             Case 145: 'Ctrl + Down
                 VerticalScrollOffset = VerticalScrollOffset + 1
 
-            Case 75 'Left
-                Cursor.X = Cursor.X - 1
+            Case 75 'Left / Ctrl + End
+                If KeyCtrl Then
+                    Cursor.Y = UBound(Lines)
+                    Cursor.X = Len(Lines(Cursor.Y)) + 1
+                Else
+                    Cursor.X = Cursor.X - 1
+                End If
 
             Case 77 'Right
-                Cursor.X = Cursor.X + 1
+                If KeyCtrl Then
+                    Cursor.Y = 1
+                    Cursor.X = 1
+                Else
+                    Cursor.X = Cursor.X + 1
+                End If
 
             Case 71 'Home
                 Cursor.X = 1
 
             Case 79 'End
                 Cursor.X = Len(Lines(Cursor.Y)) + 1
+
+            Case 84 'Ctrl + PgUp
+                If KeyCtrl Then
+                    Cursor.Y = 1
+                End If
+            Case 74 'Ctrl + PgDn
+                If KeyCtrl Then
+                    Cursor.Y = UBound(Lines)
+                End If
 
         End Select
     End If
@@ -228,7 +257,7 @@ Do
             Select Case BYTE~%%
                 Case 9, 32: Color -1
                 Case 33 To 126: Color ListLongGet(Colour(I~&), COLOUROFFSET~&)
-                Case Else: Color _RGB32(255, 0, 0)
+                Case Else: Color THEME_COLOURS.UnIdentified
             End Select
             If I~& = Cursor.Y And J~& = Cursor.X Then
                 DisplayCursor.X = K - (HorizontalScrollOffset - 1) * FONTWIDTH
@@ -236,7 +265,7 @@ Do
             End If
             If I~& = Cursor.Y And Cursor.X > Len(Lines(Cursor.Y)) Then
                 DisplayCursor.X = K - (HorizontalScrollOffset - 2) * FONTWIDTH
-                CursorColour = -1
+                CursorColour = THEME_COLOURS.Cursor
             End If
             If BYTE~%% = 9 Then
                 OldK = K
@@ -246,8 +275,8 @@ Do
             End If
             If K >= (TextDrawOffset.X + 1) * FONTWIDTH Then
                 Select Case BYTE~%%
-                    Case 33 To 126: _PrintString (K, DI~&), Chr$(BYTE~%%)
-                    Case 9, 32
+                    Case 32 To 126: _PrintString (K, DI~&), Chr$(BYTE~%%)
+                    Case 9: _PrintString (K, DI~&), MKL$(0)
                     Case Else: _PrintString (K, DI~&), Chr$(BYTE~%%)
                 End Select
             End If
@@ -382,7 +411,7 @@ Sub ReParseLine (__LINE~&)
     Colour(__LINE~&) = ListLongNew$
     For __I~& = 1 To Len(Lines(__LINE~&))
         BYTE~%% = Asc(Lines(__LINE~&), __I~&)
-        If STRINGMODE And BYTE~%% <> 34 Then
+        If STRINGMODE And BYTE~%% <> 32 And BYTE~%% <> 34 Then
             ListLongAdd Colour(__LINE~&), THEME_COLOURS.Strings
         Else
             Select Case BYTE~%%
@@ -411,10 +440,16 @@ Sub SaveFile (FILE$)
     For I = 1 To __UL~&
         Mid$(__FC$, __FS~&, Len(Lines(I))) = Lines(I)
         __FS~& = __FS~& + Len(Lines(I))
+        If I < __UL~& Then
+            Mid$(__FC$, __FS~&, Len(NEWLINE)) = NEWLINE
+            __FS~& = __FS~& + Len(NEWLINE)
+        End If
     Next I
     __F = FreeFile
+    Open FILE$ For Output As #__F
+    Close #__F
     Open FILE$ For Binary As #__F
-    Get #__F, , __FC$
+    Put #__F, , __FC$
     Close #__F
     __FC$ = ""
 End Sub
